@@ -72,7 +72,7 @@ TODO: benchmark locally via `wrangler dev`
     * `delete`: Delete workers by name or mask.
     * `test`: Test proxy functionality via the local client.
 
-### Client Library
+### Client Library ([README](src/proxyflare/client/README.md))
 1. **Manager**: Manage the list of active workers and select a random node.
 2. **Transport**: Custom transport for `httpx` to transparently proxy requests through workers.
 
