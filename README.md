@@ -56,7 +56,18 @@ Stress testing results (1000 requests with `concurrency: 50` via Cloudflare) for
 
 *ℹ️ Benchmark was conducted remotely via deployed workers.*  
 *ℹ️ Results may vary depending on your region and network load.*  
-*ℹ️ TypeScript workers (bundled via esbuild) show the best performance, outperforming others significantly in raw throughput.*  
+
+### 🏠 Local Benchmark
+Testing results conducted locally via `wrangler dev` (500 requests, `concurrency: 20`):
+
+| Worker Type     | Latency (avg) | Max Latency  | Requests per Second (RPS) |
+| :-------------- | :------------ | :----------- | :------------------------ |
+| **Rust (WASM)** | **~295 ms**   | **~1742 ms** | **~65 RPS**               |
+| **TypeScript**  | ~307 ms       | ~1559 ms     | ~60 RPS                   |
+| **Python**      | ~317 ms       | ~1681 ms     | ~59 RPS                   |
+| **JavaScript**  | ~373 ms       | ~1752 ms     | ~48 RPS                   |
+
+*ℹ️ Local benchmark includes overhead from `wrangler dev` and proxying to `httpbin.org`.*
 
 ---
 
