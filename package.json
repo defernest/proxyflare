@@ -1,0 +1,7 @@
+{
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260227.0",
+    "esbuild": "^0.27.3",
+    "wrangler": "^4.67.0"
+  }
+}

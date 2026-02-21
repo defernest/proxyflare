@@ -20,7 +20,7 @@ class WorkerRecord(BaseModel):
     url: str
     """The public URL for the worker."""
 
-    type: Literal["python", "rust", "js"]
+    type: Literal["python", "rust", "js", "ts"]
     """The type of worker (language or framework)."""
 
     created_at: float

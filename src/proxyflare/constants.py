@@ -17,8 +17,8 @@ __all__ = [
 COMPATIBILITY_DATE = "2024-04-01"
 
 # Worker Types
-WorkerType = Literal["python", "rust", "js"]
-WORKER_TYPES: set[WorkerType] = {"python", "rust", "js"}
+WorkerType = Literal["python", "rust", "js", "ts"]
+WORKER_TYPES: set[WorkerType] = {"python", "rust", "js", "ts"}
 
 # Defaults
 DEFAULT_DEPLOY_CONCURRENCY = 5
@@ -51,6 +51,10 @@ WORKER_META: dict[WorkerType, WorkerMeta] = {
         source_file="index.js",
         wasm_file="index_bg.wasm",
     ),
+    "ts": WorkerMeta(
+        main_module="worker.js",
+        source_file="dist/worker.js",
+    ),
 }
 
 CONTENT_TYPES: dict[str, str] = {
@@ -58,4 +62,5 @@ CONTENT_TYPES: dict[str, str] = {
     "js": "application/javascript+module",
     "rust": "application/javascript+module",
     "wasm": "application/wasm",
+    "ts": "application/javascript+module",
 }

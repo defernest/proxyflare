@@ -48,6 +48,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/proxyflare"]
+artifacts = [
+    "src/proxyflare/workers/ts/dist/*",
+    "src/proxyflare/workers/rust/build/*",
+]
 
 [tool.hatch.build.hooks.custom]
 

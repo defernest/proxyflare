@@ -19,7 +19,7 @@
 
 ### Key Features
 
-- **Multi-platform**: Support for workers written in Python, JavaScript, and Rust (WASM).
+- **Multi-platform**: Support for workers written in TypeScript, Python, JavaScript, and Rust (WASM).
 - **Parallel Deployment**: Quickly create dozens of workers simultaneously.
 - **Flexible Routing**: Route targets via query parameters, headers, or URL path.
 - **Local Client**: Built-in tools for testing and interacting with the worker pool.
@@ -34,7 +34,7 @@
 
 | Feature               | flareprox (Original)                  | Proxyflare                                                                                                |
 | :-------------------- | :------------------------------------ | :-------------------------------------------------------------------------------------------------------- |
-| **Worker Languages**  | JavaScript only                       | **JavaScript, Python, Rust (WASM)**                                                                       |
+| **Worker Languages**  | JavaScript only                       | **TypeScript, JavaScript, Python, Rust (WASM)**                                                           |
 | **Architecture**      | Monolithic Python script (~300 lines) | Modular CLI application (Typer, Rich, Pydantic)                                                           |
 | **Client Interface**  | Returns raw URLs                      | Built-in custom `httpx` Transport for automatic transparent proxying and ProxyManager for pool management |
 | **Testing**           | None                                  | Full Unit coverage and integration tests with `wrangler dev` + E2E                                        |
@@ -45,18 +45,18 @@
 
 ## ⚡ Worker Performance Benchmark
 
-Stress testing results (200 requests with `concurrency: 20` via Cloudflare) for each worker type:
+Stress testing results (1000 requests with `concurrency: 50` via Cloudflare) for each worker type:
 
 | Worker Type     | Latency (avg) | Max Latency  | Requests per Second (RPS) |
 | :-------------- | :------------ | :----------- | :------------------------ |
-| **JS**          | ~425 ms       | ~1432 ms     | ~43 RPS                   |
-| **Python**      | ~410 ms       | ~1298 ms     | ~46 RPS                   |
-| **Rust (WASM)** | **~240 ms**   | **~1119 ms** | **~73 RPS**               |
+| **TypeScript**  | **~305 ms**   | **~2134 ms** | **~133 RPS**              |
+| **JS**          | ~489 ms       | ~2189 ms     | ~89 RPS                   |
+| **Rust (WASM)** | ~510 ms       | ~2314 ms     | ~85 RPS                   |
+| **Python**      | ~621 ms       | ~2802 ms     | ~71 RPS                   |
 
-*ℹ️ Benchmark was conducted from a local machine*  
-*ℹ️ Results may vary depending on your region and network load*  
-TODO: benchmark locally via `wrangler dev` 
-*ℹ️ Rust workers show the best performance and lowest latency thanks to WebAssembly, making them ideal for high-load scraping/proxy tasks.*  
+*ℹ️ Benchmark was conducted remotely via deployed workers.*  
+*ℹ️ Results may vary depending on your region and network load.*  
+*ℹ️ TypeScript workers (bundled via esbuild) show the best performance, outperforming others significantly in raw throughput.*  
 
 ---
 

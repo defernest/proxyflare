@@ -98,9 +98,10 @@ async def _create_async(
         final_worker_type_str = worker_type or ctx.config.worker_type
 
         # Validate worker type
-        if final_worker_type_str not in ["python", "rust", "js"]:
+        if final_worker_type_str not in ["python", "rust", "js", "ts"]:
             raise ConfigError(
-                f"Invalid worker type '{final_worker_type_str}'. Must be 'python', 'rust', or 'js'."
+                f"Invalid worker type '{final_worker_type_str}'. "
+                "Must be 'python', 'rust', 'js', or 'ts'."
             )
 
         final_worker_type = cast(WorkerType, final_worker_type_str)
@@ -166,7 +167,7 @@ def create(
     count: Annotated[int, typer.Option(help="Number of workers to create")] = 1,
     worker_type: Annotated[
         str | None,
-        typer.Option("--type", help="Type of worker (python/rust/js). Defaults to config."),
+        typer.Option("--type", help="Type of worker (python/rust/js/ts). Defaults to config."),
     ] = None,
     result: Annotated[Path, typer.Option(help="Path to save result JSON")] = Path(
         "proxyflare-workers.json"

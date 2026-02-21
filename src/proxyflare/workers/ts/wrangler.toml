@@ -1,0 +1,6 @@
+name = "proxyflare-ts-worker"
+main = "worker.ts"
+compatibility_date = "2024-02-14"
+
+[vars]
+AUTH_KEY = "test_key_123"

@@ -19,7 +19,7 @@ class Config(BaseSettings):
     api_token: SecretStr
     """Cloudflare API token."""
 
-    worker_type: Literal["python", "rust", "js"] = "python"
+    worker_type: Literal["python", "rust", "js", "ts"] = "ts"
     """Default worker type to create if not specified."""
 
     worker_prefix: str = "proxyflare"

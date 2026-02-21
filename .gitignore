@@ -65,4 +65,9 @@ docs/
 .wrangler/
 
 flareprox.py
-proxyflare-workers.json
+proxyflare-workers*.json
+
+src/proxyflare/workers/ts/.wrangler/
+src/proxyflare/workers/ts/dist/
+src/proxyflare/workers/ts/worker-configuration.d.ts
+
