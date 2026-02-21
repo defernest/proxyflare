@@ -141,7 +141,20 @@ PROXYFLARE_API_TOKEN="your_custom_token"
 PROXYFLARE_ACCOUNT_ID="your_account_id"
 ```
 
-### Installation and Build for Development
+### Installation
+
+The easiest way to install Proxyflare is via pip (or uv pip):
+
+```bash
+pip install proxyflare
+```
+
+After installation, you can verify your configuration with the built-in command:
+```bash
+proxyflare config verify
+```
+
+### Build from Source (For Development)
 
 The project uses a custom `hatchling` build hook, which automatically compiles Rust workers upon package installation. It is recommended to use `uv` for fast dependency management and utility building:
 
@@ -154,11 +167,6 @@ uv tool install .
 
 # Install package in development mode (triggers Rust worker build)
 uv pip install -e .
-```
-
-After installation, you can verify your configuration with the built-in command:
-```bash
-proxyflare config verify
 ```
 
 ### Development and Testing
@@ -186,4 +194,4 @@ MIT
 
 ---
 
-**Status:** 🟢 Stable version (Core Ready) | **Current version:** 0.1.0
+**Status:** 🟢 Stable version (Core Ready) | **Current version:** 0.1.1
