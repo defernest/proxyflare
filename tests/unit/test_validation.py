@@ -12,7 +12,7 @@ def test_verify_token_success():
     mock_response.status = "active"
     mock_resource.verify.return_value = mock_response
 
-    token_id = verify_token(mock_resource, "account_id")
+    token_id = verify_token(mock_resource)
     assert token_id == "token_id"  # noqa: S105
 
 
@@ -21,7 +21,7 @@ def test_verify_token_failed_none():
     mock_resource.verify.return_value = None
 
     with pytest.raises(ValueError, match="Token verification failed"):
-        verify_token(mock_resource, "account_id")
+        verify_token(mock_resource)
 
 
 def test_verify_token_inactive():
@@ -31,7 +31,7 @@ def test_verify_token_inactive():
     mock_resource.verify.return_value = mock_response
 
     with pytest.raises(ValueError, match="Token is not active"):
-        verify_token(mock_resource, "account_id")
+        verify_token(mock_resource)
 
 
 def test_check_permissions_success():
@@ -49,7 +49,7 @@ def test_check_permissions_success():
     mock_response.policies = [mock_policy]
     mock_resource.get.return_value = mock_response
 
-    check_token_permissions(mock_resource, "token_id", "account_id")
+    check_token_permissions(mock_resource, "token_id")
 
 
 def test_check_permissions_missing():
@@ -67,4 +67,4 @@ def test_check_permissions_missing():
     mock_resource.get.return_value = mock_response
 
     with pytest.raises(ValueError, match="Missing required permissions"):
-        check_token_permissions(mock_resource, "token_id", "account_id")
+        check_token_permissions(mock_resource, "token_id")
