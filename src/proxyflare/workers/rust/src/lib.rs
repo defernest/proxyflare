@@ -1,5 +1,5 @@
-use worker::*;
 use url::Url;
+use worker::*;
 
 mod utils;
 
@@ -13,7 +13,9 @@ fn generate_random_ip() -> String {
     // Simple Linear Congruential Generator (LCG)
     // Using constants from MMIX by Donald Knuth
     let mut next_rand = || {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         // Extract 8 bits from the high-order bits
         ((seed >> 32) & 0xFF) as u8
     };
@@ -24,14 +26,8 @@ fn generate_random_ip() -> String {
         0 => 1,
         x => x,
     };
-    
-    format!(
-        "{}.{}.{}.{}",
-        o1,
-        next_rand(),
-        next_rand(),
-        next_rand()
-    )
+
+    format!("{}.{}.{}.{}", o1, next_rand(), next_rand(), next_rand())
 }
 
 fn log_request(req: &Request) {
@@ -39,16 +35,16 @@ fn log_request(req: &Request) {
         (
             cf.coordinates().unwrap_or_default(),
             cf.region().unwrap_or_else(|| "unknown region".into()),
-            cf.country().unwrap_or_else(|| "unknown country".into())
+            cf.country().unwrap_or_else(|| "unknown country".into()),
         )
     } else {
         (
-            (0.0, 0.0), 
+            (0.0, 0.0),
             "unknown region".into(),
-            "unknown country".into()
+            "unknown country".into(),
         )
     };
-    
+
     console_log!(
         "{} - [{:?}], located at: {:?}, within: {}",
         req.path(),
@@ -77,14 +73,15 @@ pub async fn do_main(req: Request, _env: Env) -> Result<Response> {
 
     // 0. Handle CORS preflight
     if method == Method::Options {
-        let mut headers = Headers::new();
+        let headers = Headers::new();
         headers.set("Access-Control-Allow-Origin", "*")?;
-        headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD")?;
+        headers.set(
+            "Access-Control-Allow-Methods",
+            "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD",
+        )?;
         headers.set("Access-Control-Allow-Headers", "*")?;
-        
-        return Ok(Response::empty()?
-            .with_status(204)
-            .with_headers(headers));
+
+        return Ok(Response::empty()?.with_status(204).with_headers(headers));
     }
 
     // 1. Parse the target URL
@@ -111,18 +108,18 @@ pub async fn do_main(req: Request, _env: Env) -> Result<Response> {
     if target_url_str.is_none() && url.path() != "/" {
         let path = url.path().trim_start_matches('/');
         if path.starts_with("http") {
-             target_url_str = Some(path.to_string());
+            target_url_str = Some(path.to_string());
         }
     }
 
     let target_url_val = match target_url_str {
         Some(u) => u,
         None => {
-             // Return early to avoid unused references if we were to proceed
-             return Response::error("Missing target URL", 400);
+            // Return early to avoid unused references if we were to proceed
+            return Response::error("Missing target URL", 400);
         }
     };
-    
+
     // Validate URL
     let mut target_url = match Url::parse(&target_url_val) {
         Ok(u) => u,
@@ -159,7 +156,7 @@ pub async fn do_main(req: Request, _env: Env) -> Result<Response> {
     }
 
     // 2. Prepare headers
-    let mut headers = Headers::new();
+    let headers = Headers::new();
     let mut has_forwarded_for = false;
     for (key, value) in req.headers() {
         let key_lower = key.to_lowercase();
@@ -188,7 +185,7 @@ pub async fn do_main(req: Request, _env: Env) -> Result<Response> {
         // req.inner().body() returns Option<ReadableStream>.
         // ReadableStream implements Into<JsValue>.
         if let Some(body_stream) = req.inner().body() {
-             init.with_body(Some(body_stream.into()));
+            init.with_body(Some(body_stream.into()));
         }
     }
 
@@ -197,17 +194,23 @@ pub async fn do_main(req: Request, _env: Env) -> Result<Response> {
     let mut response = Fetch::Request(fetch_request).send().await?;
 
     // 5. Process Response Headers
-    let mut new_headers = Headers::new();
+    let new_headers = Headers::new();
     for (key, value) in response.headers() {
-         let key_lower = key.to_lowercase();
-         if !matches!(key_lower.as_str(), "content-encoding" | "content-length" | "transfer-encoding") {
-             new_headers.set(&key, &value)?;
-         }
+        let key_lower = key.to_lowercase();
+        if !matches!(
+            key_lower.as_str(),
+            "content-encoding" | "content-length" | "transfer-encoding"
+        ) {
+            new_headers.set(&key, &value)?;
+        }
     }
 
     // Add CORS
     new_headers.set("Access-Control-Allow-Origin", "*")?;
-    new_headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD")?;
+    new_headers.set(
+        "Access-Control-Allow-Methods",
+        "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD",
+    )?;
     new_headers.set("Access-Control-Allow-Headers", "*")?;
 
     // 6. Return Response
@@ -237,9 +240,9 @@ mod tests {
         assert_eq!(parts.len(), 4, "IP must have 4 octets: {ip}");
 
         for part in &parts {
-            let octet: u8 = part.parse().unwrap_or_else(|_| {
-                panic!("Octet '{part}' is not a valid u8 in IP: {ip}")
-            });
+            let octet: u8 = part
+                .parse()
+                .unwrap_or_else(|_| panic!("Octet '{part}' is not a valid u8 in IP: {ip}"));
             assert!(octet >= 1, "Octet must be >= 1, got {octet} in {ip}");
             // u8 max is 255, so no need to check upper bound explicitly
         }
