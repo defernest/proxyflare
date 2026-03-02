@@ -122,6 +122,9 @@ proxyflare/
 │       ├── workers/             # Worker sources (py, js, rs)
 │       └── utils/               # Utilities (artifacts, markers)
 │
+├── clients/                     # Non-Python polyglot clients
+│   └── go/                      # Go client library
+│
 └── tests/                       # Full test coverage (Unit, Integration, E2E)
 ```
 

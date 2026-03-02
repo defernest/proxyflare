@@ -122,6 +122,9 @@ proxyflare/
 │       ├── workers/             # Исходники воркеров (py, js, rs)
 │       └── utils/               # Утилиты (artifacts, markers)
 │
+├── clients/                     # Клиенты для других языков программирования
+│   └── go/                      # Go клиентская библиотека
+│
 └── tests/                       # Полное тестовое покрытие (Unit, Integration, E2E)
 ```
 
