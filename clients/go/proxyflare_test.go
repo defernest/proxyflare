@@ -1,10 +1,12 @@
 package proxyflare_test
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -158,4 +160,275 @@ func TestProxy_BanFor(t *testing.T) {
 
 	// Should be available after 61 seconds
 	assert.True(t, p.IsAvailable(time.Now().Add(61*time.Second)))
+}
+
+func TestTransport_AutoBan(t *testing.T) {
+	proxyServer1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer proxyServer1.Close()
+
+	u1, _ := url.Parse(proxyServer1.URL)
+	p1 := proxyflare.NewProxy(u1)
+
+	proxies := []*proxyflare.Proxy{p1}
+	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil).
+		WithAutoBan(func(_ *http.Request, resp *http.Response, _ error) bool {
+			return resp != nil && resp.StatusCode == http.StatusTooManyRequests
+		}, time.Minute)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com/api", nil)
+	resp, err := tr.RoundTrip(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+
+	// Since it returned 429, the proxy should be banned for 1 minute
+	assert.False(t, p1.IsAvailable(time.Now()), "Proxy should be banned")
+}
+
+func TestTransport_Retry(t *testing.T) {
+	var requestCount int32
+
+	proxyServer1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer proxyServer1.Close()
+
+	proxyServer2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "server2-ok")
+	}))
+	defer proxyServer2.Close()
+
+	u1, _ := url.Parse(proxyServer1.URL)
+	u2, _ := url.Parse(proxyServer2.URL)
+	p1 := proxyflare.NewProxy(u1)
+	p2 := proxyflare.NewProxy(u2)
+
+	proxies := []*proxyflare.Proxy{p1, p2}
+	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil).
+		WithAutoBan(func(_ *http.Request, resp *http.Response, _ error) bool {
+			return resp != nil && resp.StatusCode == http.StatusTooManyRequests
+		}, time.Minute).
+		WithRetry(2)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com/api", nil)
+
+	resp, err := tr.RoundTrip(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	require.Equal(t, "server2-ok", string(body))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	assert.Equal(t, int32(2), atomic.LoadInt32(&requestCount), "It should make exactly two requests")
+	assert.False(t, p1.IsAvailable(time.Now()), "Server 1 proxy should be banned")
+	assert.True(t, p2.IsAvailable(time.Now()), "Server 2 proxy should still be available")
+}
+
+func TestTransport_Retry_WithBody(t *testing.T) {
+	var requestCount int32
+
+	proxyServer1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, "my-test-body", string(body), "Body on first attempt should match")
+
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer proxyServer1.Close()
+
+	proxyServer2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, "my-test-body", string(body), "Body on second attempt should also match")
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "server2-ok")
+	}))
+	defer proxyServer2.Close()
+
+	u1, _ := url.Parse(proxyServer1.URL)
+	u2, _ := url.Parse(proxyServer2.URL)
+	p1 := proxyflare.NewProxy(u1)
+	p2 := proxyflare.NewProxy(u2)
+
+	proxies := []*proxyflare.Proxy{p1, p2}
+	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil).
+		WithAutoBan(func(_ *http.Request, resp *http.Response, _ error) bool {
+			return resp != nil && resp.StatusCode == http.StatusTooManyRequests
+		}, time.Minute).
+		WithRetry(2)
+
+	// stdlib `http.NewRequest` automatically populates GetBody if a `strings.Reader` is provided.
+	req, _ := http.NewRequest(http.MethodPost, "http://example.com/api", strings.NewReader("my-test-body"))
+
+	resp, err := tr.RoundTrip(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	require.Equal(t, "server2-ok", string(body))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	assert.Equal(t, int32(2), atomic.LoadInt32(&requestCount), "It should make exactly two requests")
+	assert.False(t, p1.IsAvailable(time.Now()), "Server 1 proxy should be banned")
+	assert.True(t, p2.IsAvailable(time.Now()), "Server 2 proxy should still be available")
+}
+
+func TestTransport_Retry_NoProxiesAvailable(t *testing.T) {
+	var requestCount int32
+
+	proxyServer1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer proxyServer1.Close()
+
+	u1, _ := url.Parse(proxyServer1.URL)
+	p1 := proxyflare.NewProxy(u1)
+
+	// Since maxRetries=1, it will try to get a new proxy but the provider will error
+	// because p1 and only p1 is in the pool and it will get banned.
+	proxies := []*proxyflare.Proxy{p1}
+	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil).
+		WithAutoBan(func(_ *http.Request, resp *http.Response, _ error) bool {
+			return resp != nil && resp.StatusCode == http.StatusTooManyRequests
+		}, time.Minute).
+		WithRetry(2)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com/api", nil)
+	resp, err := tr.RoundTrip(req)
+
+	// In the new implementation pt.provider.Next(...) returns ErrNoAvailableProxies,
+	// and because attempt > 0, RoundTrip returns `lastResp, lastErr`.
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	// It should return the response from the first failed attempt (429)
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&requestCount))
+	assert.False(t, p1.IsAvailable(time.Now()), "Server 1 proxy should be banned")
+}
+
+func TestTransport_Retry_NilGetBody(t *testing.T) {
+	var requestCount int32
+
+	proxyServer1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer proxyServer1.Close()
+
+	proxyServer2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer proxyServer2.Close()
+
+	u1, _ := url.Parse(proxyServer1.URL)
+	u2, _ := url.Parse(proxyServer2.URL)
+	p1 := proxyflare.NewProxy(u1)
+	p2 := proxyflare.NewProxy(u2)
+
+	proxies := []*proxyflare.Proxy{p1, p2}
+	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil).
+		WithAutoBan(func(_ *http.Request, resp *http.Response, _ error) bool {
+			return resp != nil && resp.StatusCode == http.StatusTooManyRequests
+		}, time.Minute).
+		WithRetry(2)
+
+	// Create a dummy body io.ReadCloser WITHOUT GetBody
+	req, _ := http.NewRequest(http.MethodPost, "http://example.com/api", io.NopCloser(strings.NewReader("dummy")))
+	req.GetBody = nil // Explicitly remove GetBody just in case
+
+	resp, err := tr.RoundTrip(req)
+
+	// It should prevent retry and return the response from the 1st attempt (429) immediately
+	// rather than returning an error about GetBody, per the implementation logic.
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&requestCount), "It should only make 1 request because GetBody was nil")
+}
+
+func TestTransport_Retry_ContextCancelled(t *testing.T) {
+	var requestCount int32
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	proxyServer1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		cancel() // Cancel context after first request is received
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer proxyServer1.Close()
+
+	proxyServer2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer proxyServer2.Close()
+
+	u1, _ := url.Parse(proxyServer1.URL)
+	u2, _ := url.Parse(proxyServer2.URL)
+
+	proxies := []*proxyflare.Proxy{proxyflare.NewProxy(u1), proxyflare.NewProxy(u2)}
+	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil).
+		WithAutoBan(proxyflare.StatusCodeChecker(http.StatusTooManyRequests), time.Minute).
+		WithRetry(3)
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.com/api", nil)
+
+	resp, err := tr.RoundTrip(req)
+
+	require.ErrorIs(t, err, context.Canceled)
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
+	assert.Equal(t, int32(1), atomic.LoadInt32(&requestCount),
+		"Should only make 1 request before context cancellation aborts retries")
+}
+
+func TestTransport_AutoBan_MultipleRules_MaxDurationWins(t *testing.T) {
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer proxyServer.Close()
+
+	u, _ := url.Parse(proxyServer.URL)
+	p := proxyflare.NewProxy(u)
+
+	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p}), nil).
+		WithAutoBan(proxyflare.StatusCodeChecker(http.StatusTooManyRequests), time.Minute).
+		WithAutoBan(proxyflare.StatusCodeChecker(http.StatusTooManyRequests), 5*time.Minute)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com/api", nil)
+	resp, err := tr.RoundTrip(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	// Should be banned for 5 minutes (the longer duration), not 1 minute
+	assert.False(t, p.IsAvailable(time.Now()))
+	assert.False(t, p.IsAvailable(time.Now().Add(2*time.Minute)), "Should still be banned after 2 minutes")
+	assert.True(t, p.IsAvailable(time.Now().Add(6*time.Minute)), "Should be available after 6 minutes")
+}
+
+func TestStatusCodeChecker(t *testing.T) {
+	checker := proxyflare.StatusCodeChecker(http.StatusTooManyRequests, http.StatusServiceUnavailable)
+
+	assert.True(t, checker(nil, &http.Response{StatusCode: http.StatusTooManyRequests}, nil))
+	assert.True(t, checker(nil, &http.Response{StatusCode: http.StatusServiceUnavailable}, nil))
+	assert.False(t, checker(nil, &http.Response{StatusCode: http.StatusOK}, nil))
+	assert.False(t, checker(nil, nil, nil), "Should return false for nil response")
 }
