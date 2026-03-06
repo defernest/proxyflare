@@ -37,7 +37,7 @@ func (p *Proxy) IsAvailable(now time.Time) bool {
 	return p.availableAfter.Load() < now.Unix()
 }
 
-// Address returns the proxy worker base URL (copyDfhbfyn 3).
+// Address returns the proxy worker base URL.
 func (p *Proxy) Address() url.URL {
 	return *p.address
 }
