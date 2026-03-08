@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+var (
+	ErrProviderCannotBeNil  = errors.New("proxyflare: provider cannot be nil")
+	ErrCheckerCannotBeNil   = errors.New("proxyflare: checker cannot be nil")
+	ErrDurationCannotBeZero = errors.New("proxyflare: duration must be greater than zero")
+)
+
 // ProxyProvider defines an interface for providing proxies.
 type ProxyProvider interface {
 	// Next returns the next available proxy from the pool or ErrNoAvailableProxies.
@@ -53,7 +59,7 @@ type Transport struct {
 // If base is nil, [http.DefaultTransport] is used.
 func NewTransport(provider ProxyProvider, base http.RoundTripper) *Transport {
 	if provider == nil {
-		panic("proxyflare: provider cannot be nil")
+		panic(ErrProviderCannotBeNil)
 	}
 	if base == nil {
 		base = http.DefaultTransport
@@ -70,7 +76,10 @@ func NewTransport(provider ProxyProvider, base http.RoundTripper) *Transport {
 // the currently selected proxy will be banned for the specified duration.
 func (pt *Transport) WithAutoBan(checker Checker, duration time.Duration) *Transport {
 	if checker == nil {
-		panic("proxyflare: checker cannot be nil")
+		panic(ErrCheckerCannotBeNil)
+	}
+	if duration <= 0 {
+		panic(ErrDurationCannotBeZero)
 	}
 	pt.autoBanRules = append(pt.autoBanRules, autoBanRule{
 		checker:  checker,
@@ -125,8 +134,12 @@ func (pt *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		clonedReq, reqErr := pt.prepareRequest(req, attempt, selectedProxy)
 		if reqErr != nil {
-			// If we fail to prepare the request (e.g., GetBody failed), return the previous result
+			// If we fail to prepare the request (e.g., GetBody failed), return the previous result.
+			// However, if the failure was a context cancellation, we propagate it to caller.
 			if attempt > 0 {
+				if ctxErr := req.Context().Err(); ctxErr != nil {
+					return lastResp, ctxErr
+				}
 				return lastResp, lastErr
 			}
 			return nil, reqErr
@@ -151,12 +164,6 @@ func (pt *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		selectedProxy.BanFor(banDuration)
-
-		// If we need to retry but cannot recreate the request body, abort retries
-		// and return the current response/error to the caller so they get the actual API error (e.g. 429).
-		if req.Body != nil && req.GetBody == nil {
-			break
-		}
 	}
 
 	// If we exhausted all attempts, return the last result
@@ -164,10 +171,8 @@ func (pt *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func (pt *Transport) prepareRequest(req *http.Request, attempt int, selectedProxy *Proxy) (*http.Request, error) {
-	if attempt > 0 {
-		if err := req.Context().Err(); err != nil {
-			return nil, err
-		}
+	if err := req.Context().Err(); err != nil {
+		return nil, err
 	}
 
 	// Clone the request to avoid modifying the original one per http.RoundTripper contract

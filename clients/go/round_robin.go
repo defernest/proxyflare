@@ -1,8 +1,13 @@
 package proxyflare
 
 import (
+	"errors"
 	"sync/atomic"
 	"time"
+)
+
+var (
+	ErrNoProxiesProvided = errors.New("proxyflare: no proxies provided")
 )
 
 // RoundRobinProvider implements ProxyProvider with a round-robin strategy.
@@ -13,6 +18,9 @@ type RoundRobinProvider struct {
 
 // NewRoundRobinProvider creates a new RoundRobinProvider.
 func NewRoundRobinProvider(proxies []*Proxy) *RoundRobinProvider {
+	if len(proxies) == 0 {
+		panic(ErrNoProxiesProvided)
+	}
 	return &RoundRobinProvider{
 		proxies: append([]*Proxy(nil), proxies...),
 	}
