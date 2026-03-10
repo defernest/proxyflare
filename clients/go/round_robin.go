@@ -12,35 +12,58 @@ var (
 
 // RoundRobinProvider implements ProxyProvider with a round-robin strategy.
 type RoundRobinProvider struct {
-	proxies []*Proxy
+	proxies atomic.Pointer[[]*Proxy]
 	next    atomic.Uint32
 }
 
 // NewRoundRobinProvider creates a new RoundRobinProvider.
-func NewRoundRobinProvider(proxies []*Proxy) *RoundRobinProvider {
+func NewRoundRobinProvider(proxies []*Proxy) (*RoundRobinProvider, error) {
 	if len(proxies) == 0 {
-		panic(ErrNoProxiesProvided)
+		return nil, ErrNoProxiesProvided
 	}
-	return &RoundRobinProvider{
-		proxies: append([]*Proxy(nil), proxies...),
-	}
+	p := &RoundRobinProvider{}
+	copied := append([]*Proxy(nil), proxies...)
+	p.proxies.Store(&copied)
+	return p, nil
 }
 
 // Next returns the next available proxy from the pool or ErrNoAvailableProxies.
 func (p *RoundRobinProvider) Next(now time.Time) (*Proxy, error) {
-	if len(p.proxies) == 0 {
+	current := p.proxies.Load()
+	if current == nil || len(*current) == 0 {
 		return nil, ErrNoAvailableProxies
 	}
 
+	list := *current
 	startPos := p.next.Add(1)
 
 	// Try picking an available proxy via round-robin
-	for i := range p.proxies {
-		idx := int(startPos-1+uint32(i)) % len(p.proxies)
-		if p.proxies[idx].IsAvailable(now) {
-			return p.proxies[idx], nil
+	for i := range list {
+		idx := int(startPos-1+uint32(i)) % len(list)
+		if list[idx].IsAvailable(now) {
+			return list[idx], nil
 		}
 	}
 
 	return nil, ErrNoAvailableProxies
+}
+
+// SetProxies atomically updates the list of proxies in the provider.
+// Returns ErrNoProxiesProvided if the provided list is empty.
+func (p *RoundRobinProvider) SetProxies(proxies []*Proxy) error {
+	if len(proxies) == 0 {
+		return ErrNoProxiesProvided
+	}
+	copied := append([]*Proxy(nil), proxies...)
+	p.proxies.Store(&copied)
+	return nil
+}
+
+// GetProxies returns a copy of the current list of proxies in the provider.
+func (p *RoundRobinProvider) GetProxies() []*Proxy {
+	current := p.proxies.Load()
+	if current == nil {
+		return nil
+	}
+	return append([]*Proxy(nil), (*current)...)
 }

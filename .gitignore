@@ -23,6 +23,7 @@ target/
 htmlcov/
 .tox/
 *.cover
+coverage.out
 
 # Type checking
 .mypy_cache/

@@ -3,6 +3,7 @@ package proxyflare_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -56,7 +57,9 @@ func TestTransport_RoundTrip_Success(t *testing.T) {
 
 	// Создаем транспорт с round-robin провайдером.
 	proxies := []*proxyflare.Proxy{p1, p2}
-	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil)
+	provider, err := proxyflare.NewRoundRobinProvider(proxies)
+	require.NoError(t, err)
+	tr := proxyflare.NewTransport(provider, nil)
 
 	req, err := http.NewRequest(http.MethodGet, "http://example.com/api", nil)
 	require.NoError(t, err, "failed to create request")
@@ -109,7 +112,9 @@ func TestTransport_RoundTrip_NoProxiesAvailable(t *testing.T) {
 	p.SetAvailableAfter(time.Now().Unix() + 100)
 
 	proxies := []*proxyflare.Proxy{p}
-	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil)
+	provider, err := proxyflare.NewRoundRobinProvider(proxies)
+	require.NoError(t, err)
+	tr := proxyflare.NewTransport(provider, nil)
 
 	req, err := http.NewRequest(http.MethodGet, "http://example.com/api", nil)
 	require.NoError(t, err)
@@ -119,7 +124,7 @@ func TestTransport_RoundTrip_NoProxiesAvailable(t *testing.T) {
 }
 
 // TestNewTransport_EmptyOrNilProxies проверяет создание транспорта с пустым или nil пулом прокси.
-// Убеждается, что конструктор NewRoundRobinProvider паникует при передаче nil или пустого списка прокси.
+// Убеждается, что конструктор NewRoundRobinProvider возвращает ErrNoProxiesProvided при передаче nil или пустого списка прокси.
 // Также проверяет, что транспорт корректно инициализируется и возвращает
 // ErrNoAvailableProxies при попытке совершить RoundTrip с провайдером, который не имеет прокси.
 func TestNewTransport_EmptyOrNilProxies(t *testing.T) {
@@ -128,13 +133,12 @@ func TestNewTransport_EmptyOrNilProxies(t *testing.T) {
 		proxyflare.NewTransport(nil, nil)
 	})
 
-	// Проверяем, что конструктор NewRoundRobinProvider паникует при передаче nil или пустого списка прокси.
-	require.PanicsWithValue(t, proxyflare.ErrNoProxiesProvided, func() {
-		proxyflare.NewRoundRobinProvider(nil)
-	})
-	require.PanicsWithValue(t, proxyflare.ErrNoProxiesProvided, func() {
-		proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{})
-	})
+	// Проверяем, что конструктор NewRoundRobinProvider возвращает ErrNoProxiesProvided при передаче nil или пустого списка прокси.
+	_, err := proxyflare.NewRoundRobinProvider(nil)
+	require.ErrorIs(t, err, proxyflare.ErrNoProxiesProvided)
+
+	_, err = proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{})
+	require.ErrorIs(t, err, proxyflare.ErrNoProxiesProvided)
 	// Проверяем, что транспорт корректно инициализируется и возвращает
 	// ErrNoAvailableProxies при попытке совершить RoundTrip с провайдером, который не имеет прокси.
 	tr := proxyflare.NewTransport(&proxyflare.RoundRobinProvider{}, nil)
@@ -163,7 +167,9 @@ func TestTransport_RoundTrip_NilHeader(t *testing.T) {
 	require.NoError(t, err)
 
 	p := proxyflare.NewProxy(u)
-	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p}), nil)
+	provider, err := proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p})
+	require.NoError(t, err)
+	tr := proxyflare.NewTransport(provider, nil)
 
 	req, err := http.NewRequest(http.MethodGet, "http://example.com/test", nil)
 	require.NoError(t, err)
@@ -223,7 +229,9 @@ func TestTransport_AutoBan(t *testing.T) {
 	p1 := proxyflare.NewProxy(u1)
 
 	proxies := []*proxyflare.Proxy{p1}
-	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil).
+	provider, err := proxyflare.NewRoundRobinProvider(proxies)
+	require.NoError(t, err)
+	tr := proxyflare.NewTransport(provider, nil).
 		WithAutoBan(proxyflare.StatusCodeChecker(http.StatusTooManyRequests), time.Minute)
 
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com/api", nil)
@@ -265,7 +273,9 @@ func TestTransport_Retry(t *testing.T) {
 
 	// Создаем транспорт с round-robin провайдером, авто-баном и ретраями.
 	proxies := []*proxyflare.Proxy{p1, p2}
-	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil).
+	provider, err := proxyflare.NewRoundRobinProvider(proxies)
+	require.NoError(t, err)
+	tr := proxyflare.NewTransport(provider, nil).
 		WithAutoBan(proxyflare.StatusCodeChecker(http.StatusTooManyRequests), time.Minute).
 		WithRetry(2)
 
@@ -328,7 +338,9 @@ func TestTransport_Retry_WithBody(t *testing.T) {
 	p2 := proxyflare.NewProxy(u2)
 
 	proxies := []*proxyflare.Proxy{p1, p2}
-	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil).
+	provider, err := proxyflare.NewRoundRobinProvider(proxies)
+	require.NoError(t, err)
+	tr := proxyflare.NewTransport(provider, nil).
 		WithAutoBan(proxyflare.StatusCodeChecker(http.StatusTooManyRequests), time.Minute).
 		WithRetry(2)
 
@@ -368,7 +380,9 @@ func TestTransport_Retry_NoProxiesAvailable(t *testing.T) {
 
 	// Создаем транспорт с одним прокси и авто-баном, но с maxRetries=2.
 	proxies := []*proxyflare.Proxy{p1}
-	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil).
+	provider, err := proxyflare.NewRoundRobinProvider(proxies)
+	require.NoError(t, err)
+	tr := proxyflare.NewTransport(provider, nil).
 		WithAutoBan(proxyflare.StatusCodeChecker(http.StatusTooManyRequests), time.Minute).
 		WithRetry(2)
 
@@ -409,7 +423,9 @@ func TestTransport_Retry_NilGetBody(t *testing.T) {
 	p2 := proxyflare.NewProxy(u2)
 
 	proxies := []*proxyflare.Proxy{p1, p2}
-	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider(proxies), nil).
+	provider, err := proxyflare.NewRoundRobinProvider(proxies)
+	require.NoError(t, err)
+	tr := proxyflare.NewTransport(provider, nil).
 		WithAutoBan(proxyflare.StatusCodeChecker(http.StatusTooManyRequests), time.Minute).
 		WithRetry(2)
 
@@ -452,7 +468,9 @@ func TestTransport_Retry_GetBodyError(t *testing.T) {
 	u2, _ := url.Parse(proxyServer2.URL)
 	p2 := proxyflare.NewProxy(u2)
 
-	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p1, p2}), nil).
+	provider, err := proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p1, p2})
+	require.NoError(t, err)
+	tr := proxyflare.NewTransport(provider, nil).
 		WithAutoBan(proxyflare.StatusCodeChecker(http.StatusTooManyRequests), time.Minute).
 		WithRetry(2)
 
@@ -483,7 +501,9 @@ func TestTransport_RoundTrip_ContextCancelledBeforeAttempt(t *testing.T) {
 	cancel() // Отменяем контекст до начала работы
 
 	p := proxyflare.NewProxy(&url.URL{Scheme: "http", Host: "127.0.0.1"})
-	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p}), nil)
+	provider, err := proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p})
+	require.NoError(t, err)
+	tr := proxyflare.NewTransport(provider, nil)
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.com/api", nil)
 	resp, err := tr.RoundTrip(req)
@@ -532,7 +552,8 @@ func TestTransport_Retry_ContextCancelled(t *testing.T) {
 	u2, _ := url.Parse(proxyServer2.URL)
 
 	proxies := []*proxyflare.Proxy{proxyflare.NewProxy(u1), proxyflare.NewProxy(u2)}
-	baseProvider := proxyflare.NewRoundRobinProvider(proxies)
+	baseProvider, err := proxyflare.NewRoundRobinProvider(proxies)
+	require.NoError(t, err)
 
 	// Создаем обертку над ProxyProvider, которая отменяет контекст ровно перед
 	// подготовкой ко второй попытке, чтобы гарантированно покрыть логику reqErr
@@ -542,10 +563,10 @@ func TestTransport_Retry_ContextCancelled(t *testing.T) {
 		WithAutoBan(proxyflare.StatusCodeChecker(http.StatusTooManyRequests), time.Minute).
 		WithRetry(3)
 
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.com/api", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.com/api", nil)
+	require.NoError(t, err)
 
 	resp, err := tr.RoundTrip(req)
-
 	require.ErrorIs(t, err, context.Canceled)
 	if resp != nil && resp.Body != nil {
 		defer resp.Body.Close()
@@ -566,11 +587,14 @@ func TestTransport_AutoBan_MultipleRules_MaxDurationWins(t *testing.T) {
 	u, _ := url.Parse(proxyServer.URL)
 	p := proxyflare.NewProxy(u)
 
-	tr := proxyflare.NewTransport(proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p}), nil).
+	provider, err := proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p})
+	require.NoError(t, err)
+	tr := proxyflare.NewTransport(provider, nil).
 		WithAutoBan(proxyflare.StatusCodeChecker(http.StatusTooManyRequests), time.Minute).
 		WithAutoBan(proxyflare.StatusCodeChecker(http.StatusTooManyRequests), 5*time.Minute)
 
-	req, _ := http.NewRequest(http.MethodGet, "http://example.com/api", nil)
+	req, err := http.NewRequest(http.MethodGet, "http://example.com/api", nil)
+	require.NoError(t, err)
 	resp, err := tr.RoundTrip(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -585,7 +609,8 @@ func TestTransport_AutoBan_MultipleRules_MaxDurationWins(t *testing.T) {
 // Убеждается, что метод `WithAutoBan` падает с паникой, если передать пустое правило
 // или отрицательную/нулевую длительность для блокировки (duration <= 0).
 func TestTransport_AutoBan_PanicsOnZeroDuration(t *testing.T) {
-	provider := proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{proxyflare.NewProxy(&url.URL{})})
+	provider, err := proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{proxyflare.NewProxy(&url.URL{})})
+	require.NoError(t, err)
 	tr := proxyflare.NewTransport(provider, nil)
 
 	checker := proxyflare.StatusCodeChecker(http.StatusTooManyRequests)
@@ -600,5 +625,197 @@ func TestTransport_AutoBan_PanicsOnZeroDuration(t *testing.T) {
 
 	assert.PanicsWithValue(t, proxyflare.ErrCheckerCannotBeNil, func() {
 		tr.WithAutoBan(nil, time.Minute)
+	})
+}
+
+// TestRoundRobinProvider_SetProxies проверяет успешное обновление пула прокси.
+func TestRoundRobinProvider_SetProxies(t *testing.T) {
+	u1, _ := url.Parse("http://worker1.example.com")
+	u2, _ := url.Parse("http://worker2.example.com")
+	p1 := proxyflare.NewProxy(u1)
+	p2 := proxyflare.NewProxy(u2)
+
+	provider, err := proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p1})
+	require.NoError(t, err)
+
+	next1, err := provider.Next(time.Now())
+	require.NoError(t, err)
+	require.Equal(t, u1, func() *url.URL {
+		u := next1.Address()
+		return &u
+	}())
+
+	// Обновляем прокси пул
+	err = provider.SetProxies([]*proxyflare.Proxy{p2})
+	require.NoError(t, err)
+
+	next2, err := provider.Next(time.Now())
+	require.NoError(t, err)
+	require.Equal(t, u2, func() *url.URL {
+		u := next2.Address()
+		return &u
+	}())
+}
+
+// TestRoundRobinProvider_SetProxies_Error проверяет обновление пула прокси некорректными значениями.
+func TestRoundRobinProvider_SetProxies_Error(t *testing.T) {
+	p := proxyflare.NewProxy(&url.URL{Host: "worker1"})
+	provider, err := proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p})
+	require.NoError(t, err)
+
+	err = provider.SetProxies(nil)
+	require.ErrorIs(t, err, proxyflare.ErrNoProxiesProvided)
+
+	err = provider.SetProxies([]*proxyflare.Proxy{})
+	require.ErrorIs(t, err, proxyflare.ErrNoProxiesProvided)
+
+	// Убеждаемся, что старый пул не перезатерся
+	next, err := provider.Next(time.Now())
+	require.NoError(t, err)
+	require.Equal(t, p.Address(), next.Address())
+}
+
+// TestRoundRobinProvider_GetProxies проверяет корректность выдачи текущего пула и защиты от мутаций.
+func TestRoundRobinProvider_GetProxies(t *testing.T) {
+	// Проверка на неинициализированном провайдере (покрытие 100%)
+	emptyProvider := &proxyflare.RoundRobinProvider{}
+	require.Nil(t, emptyProvider.GetProxies())
+
+	p1 := proxyflare.NewProxy(&url.URL{Host: "worker1"})
+	provider, err := proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p1})
+	require.NoError(t, err)
+
+	proxies := provider.GetProxies()
+	require.Len(t, proxies, 1)
+	require.Equal(t, p1.Address(), proxies[0].Address())
+
+	// Изменяем копию, внутреннее состояние не должно сломаться
+	p2 := proxyflare.NewProxy(&url.URL{Host: "worker2"})
+	proxies[0] = p2
+
+	proxies2 := provider.GetProxies()
+	require.Len(t, proxies2, 1)
+	require.Equal(t, p1.Address(), proxies2[0].Address())
+}
+
+// TestRoundRobinProvider_ConcurrentUpdate проверяет отсутствие состояний гонки при параллельном Next и SetProxies.
+func TestRoundRobinProvider_ConcurrentUpdate(t *testing.T) {
+	p1 := proxyflare.NewProxy(&url.URL{Host: "worker1"})
+	p2 := proxyflare.NewProxy(&url.URL{Host: "worker2"})
+	provider, err := proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p1})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	readDone := make(chan struct{})
+	writeDone := make(chan struct{})
+
+	// Горутина читает Next
+	go func() {
+		defer close(readDone)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				_, _ = provider.Next(time.Now())
+			}
+		}
+	}()
+
+	// Горутина обновляет пулы (чередуя)
+	go func() {
+		defer close(writeDone)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				_ = provider.SetProxies([]*proxyflare.Proxy{p1, p2})
+				_ = provider.SetProxies([]*proxyflare.Proxy{p1})
+				_ = provider.SetProxies([]*proxyflare.Proxy{p2})
+			}
+		}
+	}()
+
+	<-readDone
+	<-writeDone
+}
+
+// TestRoundRobinProvider_SetProxies_Idempotent проверяет, что повторный вызов SetProxies не ломает состояние.
+func TestRoundRobinProvider_SetProxies_Idempotent(t *testing.T) {
+	p1 := proxyflare.NewProxy(&url.URL{Host: "1"})
+	p2 := proxyflare.NewProxy(&url.URL{Host: "2"})
+	provider, err := proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p1, p2})
+	require.NoError(t, err)
+
+	_, _ = provider.Next(time.Now())
+
+	err = provider.SetProxies([]*proxyflare.Proxy{p1, p2})
+	require.NoError(t, err)
+
+	err = provider.SetProxies([]*proxyflare.Proxy{p1, p2})
+	require.NoError(t, err)
+
+	_, err = provider.Next(time.Now())
+	require.NoError(t, err)
+}
+
+// TestTransport_SetProxies_Integration проверяет интеграцию Transport и обновленного пула прокси на лету.
+func TestTransport_SetProxies_Integration(t *testing.T) {
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "server1")
+	}))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "server2")
+	}))
+	defer server2.Close()
+
+	u1, _ := url.Parse(server1.URL)
+	u2, _ := url.Parse(server2.URL)
+	p1 := proxyflare.NewProxy(u1)
+	p2 := proxyflare.NewProxy(u2)
+
+	provider, err := proxyflare.NewRoundRobinProvider([]*proxyflare.Proxy{p1})
+	require.NoError(t, err)
+
+	tr := proxyflare.NewTransport(provider, nil)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com/api", nil)
+	resp1, err := tr.RoundTrip(req)
+	require.NoError(t, err)
+	defer resp1.Body.Close()
+	body1, _ := io.ReadAll(resp1.Body)
+	require.Equal(t, "server1", string(body1))
+
+	// Жонглируем проксями на лету
+	err = provider.SetProxies([]*proxyflare.Proxy{p2})
+	require.NoError(t, err)
+
+	resp2, err := tr.RoundTrip(req)
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+	body2, _ := io.ReadAll(resp2.Body)
+	require.Equal(t, "server2", string(body2))
+}
+
+// BenchmarkRoundRobinProvider_Next измеряет производительность Next() при параллельном доступе.
+func BenchmarkRoundRobinProvider_Next(b *testing.B) {
+	proxies := make([]*proxyflare.Proxy, 10)
+	for i := range proxies {
+		proxies[i] = proxyflare.NewProxy(&url.URL{Host: fmt.Sprintf("worker%d", i)})
+	}
+	provider, _ := proxyflare.NewRoundRobinProvider(proxies)
+	now := time.Now()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = provider.Next(now)
+		}
 	})
 }

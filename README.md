@@ -83,9 +83,9 @@ Testing results conducted locally via `wrangler dev` (500 requests, `concurrency
     * `delete`: Delete workers by name or mask.
     * `test`: Test proxy functionality via the local client.
 
-### Client Library ([README](src/proxyflare/client/README.md))
+### Client Library ([Python](src/proxyflare/client/README.md) | [Go](clients/go/README.md))
 1. **Manager**: Manage the list of active workers and select a random node.
-2. **Transport**: Custom transport for `httpx` to transparently proxy requests through workers.
+2. **Transport**: Custom transport for `httpx` / `http.Client` to transparently proxy requests through workers.
 
 ### Workers (Proxy)
 1. **Compatibility**: Header stripping (Cloudflare-specific, Host) for correct proxying.
